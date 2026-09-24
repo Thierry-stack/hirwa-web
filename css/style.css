@@ -622,6 +622,78 @@ section { padding: 88px 0; }
   color: var(--white); font-size: 2rem; background: none; border: none; cursor: pointer; line-height: 1;
 }
 
+/* ---------- Video gallery (YouTube) ---------- */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+.video-status { grid-column: 1 / -1; text-align: center; color: var(--gray-700); margin: 0; }
+.video-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+@media (max-width: 900px) { .video-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .video-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.video-card {
+  display: flex; flex-direction: column;
+  padding: 0; border: 0;
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  text-align: left; font: inherit; color: inherit;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.video-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); }
+.video-card:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.video-thumb { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--navy-deep); }
+.video-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
+.video-card:hover .video-thumb img { transform: scale(1.06); }
+.video-thumb::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(14, 24, 38, 0) 45%, rgba(14, 24, 38, 0.45) 100%);
+}
+.video-play {
+  position: absolute; top: 50%; left: 50%; z-index: 1;
+  width: 64px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 6px 24px rgba(242, 107, 33, 0.45);
+  transform: translate(-50%, -50%);
+  transition: transform var(--transition), background var(--transition);
+}
+.video-play svg { width: 26px; height: 26px; margin-left: 3px; fill: var(--white); }
+.video-card:hover .video-play, .video-card:focus-visible .video-play { transform: translate(-50%, -50%) scale(1.12); background: var(--orange-dark); }
+.video-meta { display: block; padding: 18px 20px 22px; }
+.video-title {
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-family: "Poppins", sans-serif; font-weight: 600; font-size: 1.02rem; line-height: 1.4; color: var(--navy);
+}
+.video-date { display: block; margin-top: 6px; font-size: 0.82rem; color: var(--gray-500); }
+
+.video-modal {
+  position: fixed; inset: 0; z-index: 2000;
+  display: none; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(14, 24, 38, 0.92);
+}
+.video-modal.open { display: flex; }
+.video-modal-inner { position: relative; width: min(960px, 100%); }
+.video-modal-frame { aspect-ratio: 16 / 9; overflow: hidden; background: #000; border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+.video-modal-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+.video-modal-close {
+  position: absolute; top: -52px; right: 0;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12); color: var(--white);
+  font-size: 2rem; line-height: 1; cursor: pointer;
+  transition: background var(--transition);
+}
+.video-modal-close:hover { background: var(--orange); }
+.video-modal-close:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+
 /* ---------- Testimonials ---------- */
 .testimonials-grid {
   display: grid;
@@ -1091,7 +1163,7 @@ section { padding: 88px 0; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .glow-orb, .gradient-text, .ticker-track, .hero-media-panel, .hero-media-badge .dot,
-  .reveal, .btn, .service-card, .project-card, [data-tilt], .whatsapp-float {
+  .reveal, .btn, .service-card, .project-card, .video-card, .video-play, [data-tilt], .whatsapp-float {
     animation: none !important;
     transition: none !important;
   }
