@@ -35,7 +35,7 @@
     commercial: {
       title: "Commercial Construction",
       base: "assets/images/gallery/",
-      categories: [{ folder: "commercial", label: "Rebero project", count: 6 }]
+      categories: [{ folder: "commercial", label: "Rebero project", count: 5 }]
     }
   };
 
