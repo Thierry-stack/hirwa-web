@@ -23,7 +23,7 @@
       categories: [{ folder: "architectural", label: "Apartment design", count: 5 }]
     },
     residential: {
-      title: "Residential Construction",
+      title: "Residential",
       base: "assets/images/gallery/",
       categories: [{ folder: "residential", label: "Residential design", count: 6 }]
     },
@@ -33,9 +33,9 @@
       categories: [{ folder: "renovation", label: "Twin house design", count: 5 }]
     },
     commercial: {
-      title: "Commercial Construction",
+      title: "Construction",
       base: "assets/images/gallery/",
-      categories: [{ folder: "commercial", label: "Rebero project", count: 5 }]
+      categories: [{ folder: "commercial", label: "Rebero project", count: 6 }]
     }
   };
 
