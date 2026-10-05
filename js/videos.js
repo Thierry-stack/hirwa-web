@@ -8,7 +8,7 @@
   if (!cfg || !grid) return;
 
   const API = "https://www.googleapis.com/youtube/v3/";
-  const CACHE_KEY = "hdcg_yt_videos_v1";
+  const CACHE_KEY = "hdcg_yt_videos_v3";
   const CACHE_TTL_MS = (cfg.cacheMinutes || 60) * 60 * 1000;
   const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
 
@@ -25,13 +25,53 @@
     });
   }
 
+  // "PT1H2M3S" / "P1DT2H" -> seconds. Returns 0 for live/upcoming ("P0D") or unparseable values.
+  function parseDuration(iso) {
+    const m = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(iso || "");
+    if (!m) return 0;
+    return (+m[1] || 0) * 604800 + (+m[2] || 0) * 86400 + (+m[3] || 0) * 3600 + (+m[4] || 0) * 60 + (+m[5] || 0);
+  }
+
+  // Shorts have no public "isShort" flag, so anything at or under the threshold is treated as a Short.
   function toVideo(item) {
-    const s = item && item.snippet;
-    const id = s && s.resourceId && s.resourceId.videoId;
-    // Private/deleted uploads stay in the playlist but have no thumbnails.
-    if (!id || !s.thumbnails || s.title === "Private video" || s.title === "Deleted video") return null;
-    const t = s.thumbnails.high || s.thumbnails.medium || s.thumbnails.default;
-    return { id: id, title: s.title, thumb: t ? t.url : thumbFor(id), publishedAt: s.publishedAt || "" };
+    const s = item.snippet;
+    const dur = parseDuration(item.contentDetails && item.contentDetails.duration);
+    if (!s || dur <= (cfg.minDurationSeconds || 60)) return null;
+    const t = s.thumbnails && (s.thumbnails.high || s.thumbnails.medium || s.thumbnails.default);
+    return {
+      id: item.id,
+      title: s.title,
+      thumb: t ? t.url : thumbFor(item.id),
+      publishedAt: s.publishedAt || "",
+      views: parseInt(item.statistics && item.statistics.viewCount, 10) || 0
+    };
+  }
+
+  function fetchDetails(ids, key) {
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+    return Promise.all(chunks.map(function (chunk) {
+      return getJson(API + "videos?part=contentDetails,statistics,snippet&id=" +
+        chunk.map(encodeURIComponent).join(",") + "&key=" + key);
+    })).then(function (responses) {
+      return responses.reduce(function (all, r) { return all.concat(r.items || []); }, []);
+    });
+  }
+
+  // Walk the uploads playlist page by page, keeping non-Short videos, until we have enough or run out.
+  function collectVideos(uploads, key, pageToken, found, page) {
+    let url = API + "playlistItems?part=contentDetails&playlistId=" + encodeURIComponent(uploads) +
+      "&maxResults=" + (cfg.pageSize || 50) + "&key=" + key;
+    if (pageToken) url += "&pageToken=" + encodeURIComponent(pageToken);
+    return getJson(url).then(function (pl) {
+      const ids = (pl.items || []).map(function (i) { return i.contentDetails && i.contentDetails.videoId; }).filter(Boolean);
+      return (ids.length ? fetchDetails(ids, key) : Promise.resolve([])).then(function (details) {
+        const all = found.concat(details.map(toVideo).filter(Boolean));
+        const enough = !cfg.scanAllUploads && all.length >= (cfg.videosToShow || 8);
+        if (enough || !pl.nextPageToken || page + 1 >= (cfg.maxPages || 10)) return all;
+        return collectVideos(uploads, key, pl.nextPageToken, all, page + 1);
+      });
+    });
   }
 
   function fetchFromApi() {
@@ -40,18 +80,50 @@
       .then(function (ch) {
         const uploads = ch.items && ch.items[0] && ch.items[0].contentDetails.relatedPlaylists.uploads;
         if (!uploads) throw new Error("uploads playlist not found");
-        return getJson(API + "playlistItems?part=snippet&playlistId=" + encodeURIComponent(uploads) +
-          "&maxResults=" + (cfg.maxResults || 12) + "&key=" + key);
+        return collectVideos(uploads, key, "", [], 0);
       })
-      .then(function (pl) {
-        return (pl.items || []).map(toVideo).filter(Boolean);
+      .then(function (videos) {
+        return videos
+          .sort(function (a, b) { return b.views - a.views; })
+          .slice(0, cfg.videosToShow || 8);
       });
   }
+
+  /* ---------- curated list ---------- */
+
+  // When config.featuredVideos is set, show exactly those videos in that order instead of auto-ranking.
+  // The signature makes the cache refresh as soon as the list changes.
+  const featured = cfg.featuredVideos || [];
+  const SIG = featured.length ? featured.map(function (v) { return v.id; }).join(",") : "auto";
+
+  function fetchFeatured() {
+    const key = encodeURIComponent(cfg.apiKey);
+    const ids = featured.map(function (v) { return encodeURIComponent(v.id); }).join(",");
+    return getJson(API + "videos?part=snippet&id=" + ids + "&key=" + key).then(function (res) {
+      const byId = {};
+      (res.items || []).forEach(function (i) { byId[i.id] = i; });
+      // Keep the configured order; skip IDs YouTube no longer returns (deleted or private).
+      return featured.map(function (f) {
+        const it = byId[f.id];
+        if (!it) return null;
+        const t = it.snippet.thumbnails && (it.snippet.thumbnails.high || it.snippet.thumbnails.medium || it.snippet.thumbnails.default);
+        return { id: f.id, title: it.snippet.title, thumb: t ? t.url : thumbFor(f.id), publishedAt: it.snippet.publishedAt || "" };
+      }).filter(Boolean);
+    });
+  }
+
+  function featuredFallback() {
+    return featured.map(function (f) {
+      return { id: f.id, title: f.title, thumb: thumbFor(f.id), publishedAt: "" };
+    });
+  }
+
+  /* ---------- cache + loading ---------- */
 
   function readCache(allowStale) {
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY));
-      if (!c || c.channelId !== cfg.channelId || !c.videos || !c.videos.length) return null;
+      if (!c || c.channelId !== cfg.channelId || c.sig !== SIG || !c.videos || !c.videos.length) return null;
       return allowStale || Date.now() - c.savedAt < CACHE_TTL_MS ? c.videos : null;
     } catch (e) {
       return null;
@@ -60,11 +132,12 @@
 
   function writeCache(videos) {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), channelId: cfg.channelId, videos: videos }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), channelId: cfg.channelId, sig: SIG, videos: videos }));
     } catch (e) { /* storage unavailable: just skip caching */ }
   }
 
   function fallbackVideos() {
+    if (featured.length) return featuredFallback();
     return (cfg.fallbackVideos || []).map(function (v) {
       return { id: v.id, title: v.title, thumb: thumbFor(v.id), publishedAt: "" };
     });
@@ -73,7 +146,7 @@
   function loadVideos() {
     const fresh = readCache(false);
     if (fresh) return Promise.resolve(fresh);
-    return fetchFromApi()
+    return (featured.length ? fetchFeatured() : fetchFromApi())
       .then(function (live) {
         if (!live.length) throw new Error("no public videos returned");
         writeCache(live);
